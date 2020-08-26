@@ -1,6 +1,9 @@
 import { createElement, render, Component } from "./toy-react";
 
-class Square extends Component {
+export class Square extends Component {
+  constructor() {
+    super();
+  }
   render() {
     const { props } = this;
     return (
@@ -12,6 +15,9 @@ class Square extends Component {
 }
 
 class Board extends Component {
+  constructor() {
+    super();
+  }
   renderSquare(i) {
     return <Square value={this.props.squares[i]} onClick={() => this.props.onClick(i)} />;
   }

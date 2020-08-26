@@ -1,4 +1,4 @@
-import { TicTacToeRender } from "./TicTacToe"
+import { TicTacToeRender } from "./TicTacToe";
 import { createElement, render, Component } from "./toy-react";
 
 class MyComponent extends Component {
@@ -35,6 +35,6 @@ let a = (
     <div>2</div>
   </MyComponent>
 );
-
+console.log("[a.vdom]", a.vdom);
 render(a, document.getElementById("root"));
-TicTacToeRender()
+TicTacToeRender();

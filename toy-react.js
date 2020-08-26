@@ -1,55 +1,12 @@
+import { Square } from "./TicTacToe";
 import { isObject } from "./util";
 
 const RENDER_TO_DOM = Symbol("渲染到dom");
-class ElementWrapper {
-  constructor(type) {
-    this.root = document.createElement(type);
-    this._range = null;
-  }
-  setAttribute(name, value) {
-    if (name.match(/^on([\s\S]+)$/)) {
-      this.root.addEventListener(
-        RegExp.$1.replace(/^[\s\S]/, (c) => c.toLowerCase()),
-        value,
-      );
-    } else {
-      if (name === "className") {
-        this.root.setAttribute("class", value);
-      } else {
-        this.root.setAttribute(name, value);
-      }
-    }
-  }
-  appendChild(component) {
-    let range = document.createRange();
-    const parent = this.root;
-    range.setStart(parent, parent.childNodes.length);
-    range.setEnd(parent, parent.childNodes.length);
-    component[RENDER_TO_DOM](range);
-  }
-  [RENDER_TO_DOM](range) {
-    this._range = range;
-    range.deleteContents();
-    range.insertNode(this.root);
-  }
-  reRender() {
-    this._range.deleteContents();
-    this[RENDER_TO_DOM](this._range);
-  }
-}
-class TextWrapper {
-  constructor(type) {
-    this.root = document.createTextNode(type);
-  }
-  [RENDER_TO_DOM](range) {
-    range.deleteContents();
-    range.insertNode(this.root);
-  }
-}
 export class Component {
   constructor() {
     this.children = [];
     this._root = null;
+    this._range = null;
     this.props = Object.create(null);
   }
   setAttribute(name, value) {
@@ -60,13 +17,63 @@ export class Component {
   }
   [RENDER_TO_DOM](range) {
     this._range = range;
-    range.deleteContents();
-    this.render()[RENDER_TO_DOM](range);
+    this._vdom = this.vdom;
+    this._vdom[RENDER_TO_DOM](range);
   }
-  reRender() {
-    this._range.deleteContents();
-    this[RENDER_TO_DOM](this._range);
+  update() {
+    let isSameNode = (oldNode, newNode) => {
+      if (oldNode.type !== newNode.type) {
+        return false;
+      } else {
+        for (const name in newNode.props) {
+          if (newNode.props[name] !== oldNode.props[name]) {
+            return false;
+          }
+        }
+        if (Object.keys(oldNode.props).length > Object.keys(newNode.props).length) {
+          return false;
+        }
+        if (newNode.type === "#text") {
+          if (newNode.content !== oldNode.content) {
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+    let update = (oldNode, newNode) => {
+      if (!isSameNode(oldNode, newNode)) {
+        newNode[RENDER_TO_DOM](oldNode._range);
+        return;
+      }
+      newNode._range = oldNode._range;
+      let newChildren = newNode.vchildren;
+      let oldChildren = oldNode.vchildren;
+
+      if (!newChildren || !newChildren.length) {
+        return;
+      }
+
+      let tailRange = oldChildren[oldChildren.length - 1]._range;
+      for (let i = 0; i < newChildren.length; i++) {
+        const newChild = newChildren[i];
+        const oldChild = oldChildren[i];
+        if (i < oldChildren.length) {
+          update(oldChild, newChild);
+        } else {
+          let range = document.createRange();
+          range.setStart(tailRange.endContainer, tailRange.endOffset);
+          range.setEnd(tailRange.endContainer, tailRange.endOffset);
+          newChild[RENDER_TO_DOM](range);
+          tailRange = range;
+        }
+      }
+    };
+    let vdom = this.vdom;
+    update(this._vdom, vdom);
+    this._vdom = vdom;
   }
+
   setState(newState) {
     if (!isObject(this.state)) {
       this.state = new State();
@@ -94,7 +101,77 @@ export class Component {
       merge(this.state, newState);
     }
     console.log("[this.state]", this.state, newState);
-    this.reRender();
+    this.update();
+  }
+
+  get vdom() {
+    /** render 返回的是经过 createElement 返回的对象， */
+    return this.render().vdom;
+  }
+  // get vchildren() {
+  //   return this.children.map((child) => child.vdom);
+  // }
+}
+
+class ElementWrapper extends Component {
+  constructor(type) {
+    super(type);
+    this.type = type;
+  }
+  get vdom() {
+    this.vchildren = this.children.map((child) => child.vdom);
+    return this;
+  }
+  [RENDER_TO_DOM](range) {
+    if (!range) {
+      throw "渲染到dom必须传入 range 对象";
+    }
+    this._range = range;
+    let root = document.createElement(this.type);
+    for (let name in this.props) {
+      let value = this.props[name];
+      if (name.match(/^on([\s\S]+)$/)) {
+        root.addEventListener(
+          RegExp.$1.replace(/^[\s\S]/, (c) => c.toLowerCase()),
+          value,
+        );
+      } else {
+        if (name === "className") {
+          root.setAttribute("class", value);
+        } else {
+          root.setAttribute(name, value);
+        }
+      }
+    }
+
+    for (let child of this.vchildren) {
+      let childRange = document.createRange();
+      const parent = root;
+      childRange.setStart(parent, parent.childNodes.length);
+      childRange.setEnd(parent, parent.childNodes.length);
+      child[RENDER_TO_DOM](childRange);
+
+      // if (!child.vdom._range) {
+      //   console.log(child, child.vdom._range, "[this]", this, child.vdom === this);
+      // }
+      // console.log(!!child._range, !!child.vdom._range);
+    }
+    replaceContent(range, root);
+  }
+}
+class TextWrapper extends Component {
+  constructor(content) {
+    super(content);
+    this.content = content;
+    this.type = "#text";
+  }
+  get vdom() {
+    return this;
+  }
+  [RENDER_TO_DOM](range) {
+    this._range = range;
+    let root = document.createTextNode(this.content);
+    replaceContent(range, root);
   }
 }
 
@@ -108,8 +185,7 @@ export const createElement = (type, attrs, ...children /** 这里可能是文本
   }
   // 设置属性
   for (const p in attrs) {
-    const v = attrs[p];
-    e.setAttribute(p, v);
+    e.setAttribute(p, attrs[p]);
   }
   // 添加子元素
   let insertChild = (children) => {
@@ -128,7 +204,6 @@ export const createElement = (type, attrs, ...children /** 这里可能是文本
     }
   };
   insertChild(children);
-
   return e;
 };
 
@@ -139,3 +214,12 @@ export const render = (component, parent) => {
   range.deleteContents();
   component[RENDER_TO_DOM](range);
 };
+
+function replaceContent(range, node) {
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.deleteContents();
+
+  range.setStartBefore(node);
+  range.setEndAfter(node);
+}
