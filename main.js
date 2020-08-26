@@ -1,11 +1,31 @@
+import { TicTacToeRender } from "./TicTacToe"
 import { createElement, render, Component } from "./toy-react";
 
 class MyComponent extends Component {
-  constructor(type) {
-    super(type);
+  constructor() {
+    super();
+    this.state = {
+      a: 1,
+      b: 2,
+    };
   }
   render() {
-    return <div>{this.children}</div>;
+    return (
+      <div>
+        <button
+          onClick={() => {
+            this.setState({ a: this.state.a + 1 });
+          }}>
+          aaa
+        </button>
+        <span>
+          {this.state.a}||
+          {this.state.b}
+        </span>
+
+        {this.children}
+      </div>
+    );
   }
 }
 let a = (
@@ -17,3 +37,4 @@ let a = (
 );
 
 render(a, document.getElementById("root"));
+TicTacToeRender()
